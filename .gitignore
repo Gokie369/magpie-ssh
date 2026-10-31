@@ -1,0 +1,15 @@
+# Local server configuration and temporary files
+hosts.json
+hosts.json.tmp
+
+# Local password helper and generated Python cache
+askpass.exe
+askpass.cs
+__pycache__/
+
+# Panel backups and old private scripts
+*.bak
+legacy/
+
+# Optional local tooling
+node_modules/

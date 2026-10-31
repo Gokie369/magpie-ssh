@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>magpie SSH Tunnel Panel</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #fff; --fg: #24231f; --muted: #6f6c64; --line: #e4e1da;
+    --ok: #1f8a4c; --warn: #b7791f; --err: #c0392b; --info: #2f6fb3; --btn: #2d2c28; --btn-fg: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151413; --card: #1f1e1c; --fg: #e8e5dd; --muted: #9a968c; --line: #33312d;
+      --ok: #4cc27f; --warn: #e0a84a; --err: #ef6b5b; --info: #6aa5e6; --btn: #e8e5dd; --btn-fg: #151413; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--fg); }
+  main { max-width: 1080px; margin: 0 auto; padding: 24px 20px 60px; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 15px; margin: 28px 0 10px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .grow { flex: 1; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12px; }
+  .mono { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 7px; padding: 5px 11px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--muted); }
+  button.primary { background: var(--btn); color: var(--btn-fg); border-color: var(--btn); }
+  button.danger { color: var(--err); }
+  button:disabled { opacity: .5; cursor: default; }
+  input, select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 5px 9px; }
+  input { min-width: 0; max-width: 100%; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--info); outline-offset: 3px; }
+  .mono, .err-text, .hint, .log { overflow-wrap: anywhere; }
+  input[type=checkbox] { padding: 0; }
+  label.f { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+  label.f input { color: var(--fg); font-size: 14px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: var(--muted); flex: none; }
+  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); } .dot.err { background: var(--err); } .dot.info { background: var(--info); }
+  .badge { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .badge.ok { color: var(--ok); border-color: currentColor; } .badge.err { color: var(--err); border-color: currentColor; } .badge.warn { color: var(--warn); border-color: currentColor; }
+  .hosts { display: grid; gap: 12px; }
+  .host .top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .host .name { font-weight: 600; font-size: 15px; }
+  .host .actions { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .host .checks { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .err-text { color: var(--err); font-size: 12.5px; margin-top: 6px; }
+  .switch { position: relative; width: 42px; height: 24px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch span { position: absolute; inset: 0; background: var(--line); border-radius: 99px; cursor: pointer; transition: .15s; }
+  .switch span::before { content: ""; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .15s; }
+  .switch input:checked + span { background: var(--ok); }
+  .switch input:checked + span::before { transform: translateX(18px); }
+  .switch input:focus-visible + span { outline: 2px solid var(--info); outline-offset: 3px; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+  .log { max-height: 260px; overflow: auto; }
+  .log div { padding: 2px 0; border-bottom: 1px dashed var(--line); }
+  .log .t { color: var(--muted); margin-right: 8px; }
+  .log .a { color: var(--info); margin-right: 6px; }
+  details summary { cursor: pointer; }
+  pre { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; overflow: auto; margin: 6px 0; }
+  #toast { position: fixed; right: 20px; bottom: 20px; display: grid; gap: 8px; max-width: min(420px, calc(100vw - 40px)); z-index: 9; }
+  #toast div { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--info); border-radius: 8px; padding: 9px 12px; box-shadow: 0 4px 18px rgba(0,0,0,.12); }
+  #toast div.err { border-left-color: var(--err); } #toast div.ok { border-left-color: var(--ok); }
+  .hint { font-size: 12.5px; color: var(--muted); margin: 6px 0 0; }
+  .warnbox { border-color: var(--warn); }
+  dialog { width: min(420px, calc(100vw - 32px)); background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog h2 { margin-top: 0; }
+  @media (max-width: 480px) { main { padding: 16px 12px 40px; } .card { padding: 12px; } .badge { white-space: normal; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 data-i18n="title"></h1>
+    <div class="row">
+      <button id="allStart" class="primary" data-i18n="allStart"></button>
+      <button id="allStop" data-i18n="allStop"></button>
+      <button id="refresh" data-i18n="refresh"></button>
+      <button id="syncAll"></button>
+      <button id="shutdown" class="danger" data-i18n="shutdown"></button>
+      <button id="lang" title="Language / 语言"></button>
+    </div>
+  </header>
+
+  <div class="card row" style="margin-top:16px" id="magpieCard">
+    <span class="dot" id="magpieDot"></span>
+    <div class="grow">
+      <div><b data-i18n="localMagpie"></b> <span class="mono muted" id="magpieAddr"></span></div>
+      <div class="small muted" id="magpieInfo"></div>
+    </div>
+    <button id="magpieStart" hidden data-i18n="startMagpie"></button>
+  </div>
+
+  <div id="externalBox"></div>
+
+  <h2 id="hostHeading"></h2>
+  <div class="hosts" id="hosts"></div>
+
+  <h2 data-i18n="addTitle"></h2>
+  <div class="card">
+    <div class="row">
+      <label class="f grow"><span data-i18n="sshAlias"></span>
+        <input id="addAlias" list="sshAliases" data-i18n-ph="aliasPlaceholder" autocomplete="off">
+      </label>
+      <datalist id="sshAliases"></datalist>
+    </div>
+    <p class="hint" id="addAliasHint"></p>
+    <div class="form-grid" id="newHostFields">
+      <label class="f"><span data-i18n="hostAddress"></span><input id="addHostname" placeholder="192.0.2.10"></label>
+      <label class="f"><span data-i18n="userName"></span><input id="addUser" placeholder="ubuntu"></label>
+      <label class="f"><span data-i18n="sshPort"></span><input id="addPort" type="number" value="22"></label>
+    </div>
+    <div class="form-grid">
+      <label class="f"><span data-i18n="remoteTunnelPort"></span><input id="addRemotePort" type="number" placeholder="3425"></label>
+      <label class="f"><span data-i18n="serverPassword"></span><input id="addPassword" type="password" data-i18n-ph="passwordPlaceholder" autocomplete="new-password"></label>
+    </div>
+    <p class="hint" data-i18n="passwordHint"></p>
+    <p class="hint" data-i18n="portHint"></p>
+    <div class="row" style="margin-top:10px">
+      <label class="row small"><input type="checkbox" id="addAuto"> <span data-i18n="autoStartLabel"></span></label>
+      <span class="grow"></span>
+      <button class="primary" id="addBtn"></button>
+    </div>
+  </div>
+
+  <h2 data-i18n="settings"></h2>
+  <div class="card">
+    <div class="form-grid">
+      <label class="f"><span data-i18n="localPort"></span><input id="sLocalPort" type="number"></label>
+      <label class="f"><span data-i18n="testModel"></span><input id="sTestModel" list="modelList" data-i18n-ph="autoPick"></label>
+      <label class="f"><span data-i18n="codexModel"></span><input id="sCodexModel" list="modelList" data-i18n-ph="autoPick"></label>
+      <label class="f"><span data-i18n="claudeModel"></span><input id="sClaudeModel" list="modelList" data-i18n-ph="autoPick"></label>
+    </div>
+    <datalist id="modelList"></datalist>
+    <label class="f" style="margin-top:10px"><span data-i18n="magpieExe"></span><input id="sMagpieExe" data-i18n-ph="magpieExePlaceholder"></label>
+    <label class="row small" style="margin-top:10px"><input type="checkbox" id="sAutoSync"> <span data-i18n="autoSyncLabel"></span></label>
+    <label class="row small" style="margin-top:6px"><input type="checkbox" id="sBypass"> <span data-i18n="bypassLabel"></span></label>
+    <p class="hint" id="syncInfo"></p>
+    <p class="hint" data-i18n="settingsHint"></p>
+    <div class="row" style="margin-top:10px"><span class="grow"></span><button id="saveSettings" data-i18n="saveSettings"></button></div>
+  </div>
+
+  <h2 data-i18n="usageTitle"></h2>
+  <div class="card">
+    <p style="margin-top:0" data-i18n="usageIntro"></p>
+    <pre class="mono" id="usageCode"></pre>
+    <p class="hint" data-i18n-html="usageHint"></p>
+  </div>
+
+  <h2 class="row"><span data-i18n="logs"></span> <span class="grow"></span><button id="downloadLogs" class="small" data-i18n="exportLogs"></button></h2>
+  <div class="card log mono" id="log"></div>
+  <p class="hint" data-i18n="footerHint"></p>
+</main>
+<div id="toast" role="status" aria-live="polite"></div>
+<dialog id="keyDialog">
+  <h2 data-i18n="keyTitle"></h2>
+  <p id="keyHost" class="muted"></p>
+  <label class="f"><span data-i18n="keyPassword"></span><input id="keyPassword" type="password" autocomplete="new-password"></label>
+  <p class="hint" data-i18n="keyHint"></p>
+  <div class="row" style="margin-top:16px"><button id="keyCancel" data-i18n="cancel"></button><span class="grow"></span><button id="keySubmit" class="primary" data-i18n="installKey"></button></div>
+</dialog>
+
+<script src="/i18n.js"></script>
+<script>
+const TOKEN = '__TOKEN__';
+const $ = id => document.getElementById(id);
+const LANG_KEY = 'magpie-panel-lang';
+let LANG = localStorage.getItem(LANG_KEY) || (/^zh/i.test(navigator.language || '') ? 'zh' : 'en');
+const t = (key, params) => I18N.format(LANG, key, params);
+const R = msg => I18N.render(LANG, msg);
+let state = null;
+let latestLogs = [], refreshing = false, exited = false, keyAlias = null;
+const busy = new Set();
+
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (k in e && typeof v !== 'string') e[k] = v;
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) e.append(k.nodeType ? k : String(k));
+  return e;
+}
+function applyStatic() {
+  document.documentElement.lang = LANG === 'zh' ? 'zh-CN' : 'en';
+  document.title = t('title');
+  document.querySelectorAll('[data-i18n]').forEach(n => { n.textContent = t(n.dataset.i18n); });
+  // Only our own message table is rendered as HTML.
+  document.querySelectorAll('[data-i18n-html]').forEach(n => { n.innerHTML = t(n.dataset.i18nHtml); });
+  document.querySelectorAll('[data-i18n-ph]').forEach(n => { n.placeholder = t(n.dataset.i18nPh); });
+  $('lang').textContent = t('langSwitch');
+  $('usageCode').textContent = [
+    'codex                            ' + t('usageComment1'),
+    'claude                           ' + t('usageComment1'),
+    'codex -m <magpie-model>          ' + t('usageComment2'),
+    'claude --model <magpie-model>',
+  ].join('\n');
+  if (!state) {
+    $('magpieInfo').textContent = t('checking');
+    $('syncAll').textContent = t('syncAll');
+    $('addBtn').textContent = t('add');
+    $('hostHeading').textContent = t('hostHeading', { running: 0, total: 0 });
+    updateAliasHint();
+  }
+}
+function toast(msg, kind) {
+  const d = el('div', { class: kind || '' }, msg);
+  $('toast').append(d);
+  setTimeout(() => d.remove(), kind === 'err' ? 9000 : 4500);
+}
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method, headers: { 'Content-Type': 'application/json', 'X-Panel-Token': TOKEN, 'X-Panel-Lang': LANG },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+  return j;
+}
+async function act(key, fn, okMsg) {
+  if (busy.has(key)) return;
+  busy.add(key); render();
+  try { const r = await fn(); if (okMsg) toast(typeof okMsg === 'function' ? okMsg(r) : okMsg, 'ok'); return r; }
+  catch (e) { toast(e.message, 'err'); }
+  finally { busy.delete(key); await refresh(); }
+}
+const enc = encodeURIComponent;
+
+function ago(ts) {
+  if (!ts) return '';
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (s < 60) return t('agoSec', { n: s });
+  if (s < 3600) return t('agoMin', { n: Math.floor(s / 60) });
+  if (s < 86400) return t('agoHour', { h: Math.floor(s / 3600), m: Math.floor(s % 3600 / 60) });
+  return t('agoDay', { n: Math.floor(s / 86400) });
+}
+const TUNNEL_TEXT = { stopped: ['stStopped', ''], stopping: ['stStopping', 'warn'], starting: ['stStarting', 'info'], running: ['stRunning', 'ok'], retrying: ['stRetrying', 'warn'], error: ['stError', 'err'] };
+
+function hostCard(h) {
+  const tn = h.tunnel;
+  const [tKey, tKind] = TUNNEL_TEXT[tn.status] || [null, ''];
+  const tText = tKey ? t(tKey) : tn.status;
+  const on = tn.wanted == null ? tn.status !== 'stopped' : tn.wanted;
+  const b = k => busy.has(h.alias + ':' + k);
+  const working = [...busy].some(k => k.startsWith(h.alias + ':'));
+  const c = h.lastCheck;
+  const native = h.native || (c && c.native) || {};
+  const checks = [];
+  if (c && c.ok) {
+    checks.push(el('span', { class: 'badge ' + (c.gateway ? 'ok' : 'err') }, c.gateway ? t('remoteOk') : t('remoteFail', { code: c.gatewayCode })));
+    checks.push(el('span', { class: 'badge ' + (c.opencodeConfigured ? 'ok' : '') },
+      !c.tools.opencode ? t('ocMissing') : c.opencodeConfigured ? t('ocConfigured') : t('ocNotConfigured')));
+    for (const [tool, label] of [['codex', 'Codex'], ['claude', 'Claude Code']]) {
+      const n = native[tool];
+      if (n && n.active) checks.push(el('span', { class: 'badge ' + (n.changed ? 'warn' : 'ok') }, t(n.changed ? 'nativeChanged' : 'nativeActive', { label })));
+    }
+    if (h.nativeStale) checks.push(el('span', { class: 'badge warn' }, t('nativeStale')));
+    checks.push(el('span', { class: 'small muted' }, t('checkedAgo', { ago: ago(c.at) })));
+  } else if (c && !c.ok) {
+    checks.push(el('span', { class: 'badge err' }, t('checkFailed', { error: R(c.error) })));
+  }
+
+  const toggle = el('label', { class: 'switch', title: on ? t('tunnelOff') : t('tunnelOn') },
+    el('input', { type: 'checkbox', checked: on, disabled: b('toggle') || busy.has('all'), 'aria-label': t('tunnelToggle', { alias: h.alias }), onchange: e => {
+      const action = e.target.checked ? 'start' : 'stop';
+      act(h.alias + ':toggle', () => api('POST', `/api/hosts/${enc(h.alias)}/${action}`));
+    } }),
+    el('span'));
+
+  const nativeButtons = ['codex', 'claude'].flatMap(tool => {
+    const n = native[tool];
+    const label = tool === 'codex' ? 'Codex' : 'Claude';
+    if (n && n.active) {
+      const buttons = [];
+      if (n.changed) {
+        buttons.push(el('button', { disabled: working, onclick: () => {
+          if (!confirm(t('reapplyConfirm', { label }))) return;
+          act(h.alias + ':native', () => api('POST', `/api/hosts/${enc(h.alias)}/native/apply`, { tool, force: true }), t('reapplyDone', { alias: h.alias, label }));
+        } }, t('reapply', { label })));
+      }
+      buttons.push(el('button', { disabled: working, onclick: () => {
+        const msg = n.changed ? t('forceRestoreConfirm', { label }) : t('restoreConfirm', { alias: h.alias, label });
+        if (!confirm(msg)) return;
+        act(h.alias + ':native', () => api('POST', `/api/hosts/${enc(h.alias)}/native/restore`, { tool, force: true }), t('restoreDone', { alias: h.alias, label }));
+      } }, t(n.changed ? 'forceRestore' : 'restore', { label })));
+      if (tool === 'codex') {
+        buttons.push(el('button', { disabled: working, onclick: () => {
+          if (!confirm(t('daemonConfirm', { alias: h.alias }))) return;
+          act(h.alias + ':codex-daemon', () => api('POST', `/api/hosts/${enc(h.alias)}/codex-daemon`), t('daemonDone', { alias: h.alias }));
+        } }, t('daemonRestart')));
+      }
+      return buttons;
+    }
+    return [el('button', { disabled: working, onclick: () => {
+      const msg = tool === 'codex'
+        ? t('applyConfirmCodex', { alias: h.alias })
+        : t('applyConfirmClaude', { alias: h.alias, bypass: state.settings.claudeBypass ? t('applyBypassNote') : '' });
+      if (!confirm(msg)) return;
+      act(h.alias + ':native', () => api('POST', `/api/hosts/${enc(h.alias)}/native/apply`, { tool, force: true }), t('applyDone', { alias: h.alias, label, tool }));
+    } }, t('apply', { label }))];
+  });
+
+  return el('div', { class: 'card host', 'data-alias': h.alias },
+    el('div', { class: 'top' },
+      toggle,
+      el('span', { class: 'dot ' + tKind }),
+      el('span', { class: 'name' }, h.alias),
+      el('span', { class: 'mono muted' }, h.ssh ? `${h.ssh.user || '?'}@${h.ssh.hostname}${h.ssh.port !== '22' ? ':' + h.ssh.port : ''}` : t('notInSshConfig')),
+      el('span', { class: 'grow' }),
+      el('span', { class: 'small' }, tText + (tn.status === 'running' ? ' · ' + ago(tn.since) : '') + (tn.restarts ? t('restartsCount', { n: tn.restarts }) : '')),
+    ),
+    el('div', { class: 'row small muted', style: 'margin-top:6px' },
+      el('span', {}, t('remotePortLabel')),
+      el('input', { type: 'number', min: 1024, max: 65535, value: h.remotePort, 'aria-label': h.alias + ' ' + t('remoteTunnelPort'), style: 'width:90px', onchange: e => {
+        const remotePort = Number(e.target.value);
+        act(h.alias + ':port', () => api('POST', `/api/hosts/${enc(h.alias)}/update`, { remotePort }), t('portChanged'));
+      } }),
+      el('label', { class: 'row', style: 'margin-left:12px' },
+        el('input', { type: 'checkbox', checked: h.autoStart, 'aria-label': h.alias + ' ' + t('autoStartLabel'), onchange: e => {
+          const autoStart = e.target.checked;
+          act(h.alias + ':auto', () => api('POST', `/api/hosts/${enc(h.alias)}/update`, { autoStart }));
+        } }),
+        t('autoStartLabel')),
+    ),
+    tn.lastError && tn.status !== 'running' ? el('div', { class: 'err-text' }, R(tn.lastError)) : null,
+    checks.length ? el('div', { class: 'checks' }, checks) : null,
+    h.lastTest ? el('div', { class: 'hint' },
+      el('span', { class: 'badge ok' }, t('inferenceOk')),
+      t('lastTestLine', { model: h.lastTest.model, ms: h.lastTest.elapsedMs, ago: ago(h.lastTest.at) }),
+      el('details', {}, el('summary', {}, t('viewReply')), el('pre', { class: 'mono', style: 'white-space:pre-wrap' }, h.lastTest.reply)),
+    ) : null,
+    el('div', { class: 'actions' },
+      el('button', { disabled: working, onclick: () => act(h.alias + ':check', () => api('POST', `/api/hosts/${enc(h.alias)}/check`)) }, b('check') ? t('checking') : t('check')),
+      el('button', { disabled: working, onclick: () => act(h.alias + ':test', () => api('POST', `/api/hosts/${enc(h.alias)}/test`, {}), r => t('testToast', { alias: h.alias, ms: r.elapsedMs, reply: r.reply.slice(0, 120) })) }, b('test') ? t('testing') : t('test')),
+      el('button', { disabled: working, onclick: () => act(h.alias + ':sync', () => api('POST', `/api/hosts/${enc(h.alias)}/sync`), t('syncOpencodeDone', { alias: h.alias })) }, b('sync') ? t('syncing') : t('syncOpencode')),
+      ...nativeButtons,
+      on ? el('button', { disabled: b('restart'), onclick: () => act(h.alias + ':restart', () => api('POST', `/api/hosts/${enc(h.alias)}/restart`)) }, t('reconnect')) : null,
+      el('button', { disabled: working, onclick: () => {
+        keyAlias = h.alias;
+        $('keyHost').textContent = h.alias;
+        $('keyPassword').value = '';
+        $('keyDialog').showModal();
+        $('keyPassword').focus();
+      } }, b('key') ? t('settingUp') : t('setupKey')),
+      el('span', { class: 'grow' }),
+      el('button', { class: 'danger', onclick: () => { if (confirm(t('removeConfirm', { alias: h.alias }))) act(h.alias + ':rm', () => api('DELETE', `/api/hosts/${enc(h.alias)}`)); } }, t('remove')),
+    ),
+  );
+}
+
+function render() {
+  if (!state || exited) return;
+  const m = state.magpie;
+  $('magpieDot').className = 'dot ' + (m.up ? 'ok' : 'err');
+  $('magpieAddr').textContent = `127.0.0.1:${state.settings.localPort}`;
+  $('magpieInfo').textContent = m.up ? t('magpieUp', { n: m.models.length }) : t('magpieDownInfo', { error: m.error === 'timeout' ? t('magpieTimeoutShort') : m.error });
+  $('magpieStart').hidden = m.up;
+  $('magpieStart').disabled = busy.has('magpie');
+  $('allStart').disabled = $('allStop').disabled = busy.has('all');
+  $('addBtn').disabled = busy.has('add');
+  $('addBtn').textContent = busy.has('add') ? t('adding') : t('add');
+  $('saveSettings').disabled = busy.has('settings');
+  $('hostHeading').textContent = t('hostHeading', { running: state.hosts.filter(h => h.tunnel.status === 'running').length, total: state.hosts.length });
+  const sy = state.sync || {};
+  $('syncAll').disabled = busy.has('syncAll') || sy.syncing;
+  $('syncAll').textContent = sy.syncing ? t('syncing') : t('syncAll');
+  $('syncInfo').textContent = sy.changed ? t('syncPending')
+    : sy.lastAt ? t('syncLast', { ago: ago(sy.lastAt), n: sy.modelCount }) : t('syncNever');
+
+  const ext = state.external || [];
+  $('externalBox').replaceChildren(ext.length ? el('div', { class: 'card warnbox', style: 'margin-top:12px' },
+    el('b', {}, t('externalTitle')),
+    el('p', { class: 'hint' }, t('externalHint')),
+    ext.map(x => el('div', { class: 'row', style: 'margin-top:6px' },
+      el('span', { class: 'mono small grow' }, `PID ${x.pid}  ${x.cmd.replace(/^"?[^"]*ssh(\.exe)?"?\s*/i, 'ssh ')}`),
+      el('button', { class: 'danger', onclick: () => { if (confirm(t('endConfirm', { pid: x.pid }))) act('ext' + x.pid, () => api('POST', `/api/external/${x.pid}/kill`), t('ended')); } }, t('end')),
+    )),
+  ) : '');
+
+  if (!$('hosts').contains(document.activeElement) || document.activeElement.tagName !== 'INPUT') {
+    $('hosts').replaceChildren(...(state.hosts.length ? state.hosts.map(hostCard) : [el('div', { class: 'card muted' }, t('noHosts'))]));
+  }
+
+  $('sshAliases').replaceChildren(...state.sshConfigHosts.map(a => el('option', { value: a })));
+  $('modelList').replaceChildren(...(m.models || []).map(a => el('option', { value: a })));
+  updateAliasHint();
+}
+function renderLogs() {
+  const box = $('log');
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
+  box.replaceChildren(...latestLogs.map(l => el('div', {},
+    el('span', { class: 't' }, new Date(l.t).toLocaleTimeString()),
+    l.alias ? el('span', { class: 'a' }, l.alias) : null, R(l.msg))));
+  if (atBottom) box.scrollTop = box.scrollHeight;
+}
+function fillSettings() {
+  const s = state.settings;
+  $('sLocalPort').value = s.localPort;
+  $('sTestModel').value = s.testModel || '';
+  $('sCodexModel').value = s.codexModel || '';
+  $('sClaudeModel').value = s.claudeModel || '';
+  $('sMagpieExe').value = s.magpieExe || '';
+  $('sMagpieExe').placeholder = state.magpieExeFound || t('magpieExePlaceholder');
+  $('sAutoSync').checked = s.autoSyncMagpie !== false;
+  $('sBypass').checked = !!s.claudeBypass;
+}
+function updateAliasHint() {
+  const a = $('addAlias').value.trim();
+  const known = state && state.sshConfigHosts.includes(a);
+  $('newHostFields').style.display = known ? 'none' : '';
+  $('addAliasHint').textContent = known ? t('aliasKnown', { alias: a }) : t('aliasHint');
+}
+
+async function refresh() {
+  if (refreshing || exited) return;
+  refreshing = true;
+  try {
+    const first = !state;
+    state = await api('GET', '/api/state');
+    if (first) fillSettings();
+    render();
+    latestLogs = await api('GET', '/api/logs');
+    renderLogs();
+  } catch (e) {
+    $('magpieInfo').textContent = t('backendDown', { error: e.message });
+    $('magpieDot').className = 'dot err';
+  } finally { refreshing = false; }
+}
+
+$('lang').onclick = () => {
+  LANG = LANG === 'zh' ? 'en' : 'zh';
+  localStorage.setItem(LANG_KEY, LANG);
+  applyStatic();
+  if (state) {
+    if (!state.magpieExeFound && !$('sMagpieExe').value) $('sMagpieExe').placeholder = t('magpieExePlaceholder');
+    render();
+    renderLogs();
+  }
+};
+$('refresh').onclick = refresh;
+$('syncAll').onclick = () => act('syncAll', () => api('POST', '/api/sync/all'), r => {
+  const ok = (r.results || []).filter(x => x.ok).length;
+  return t('syncToast', { ok, total: (r.results || []).length, n: r.modelCount });
+});
+$('allStart').onclick = () => act('all', () => api('POST', '/api/all/start'));
+$('allStop').onclick = () => act('all', () => api('POST', '/api/all/stop'));
+$('magpieStart').onclick = () => act('magpie', () => api('POST', '/api/magpie/start'), t('magpieStartedToast'));
+$('addAlias').oninput = updateAliasHint;
+$('addBtn').onclick = () => act('add', async () => {
+  const body = {
+    alias: $('addAlias').value.trim(),
+    hostname: $('addHostname').value.trim(),
+    user: $('addUser').value.trim(),
+    port: Number($('addPort').value) || 22,
+    remotePort: Number($('addRemotePort').value) || undefined,
+    password: $('addPassword').value || undefined,
+    autoStart: $('addAuto').checked,
+  };
+  $('addPassword').value = '';
+  const r = await api('POST', '/api/hosts', body);
+  if (r.login) { toast(t('addedOk', { alias: r.alias }), 'ok'); for (const id of ['addAlias', 'addHostname', 'addUser', 'addRemotePort']) $(id).value = ''; }
+  else toast(t('addedNoLogin', { alias: r.alias, error: R(r.loginError) }), 'err');
+});
+$('saveSettings').onclick = () => act('settings', () => api('POST', '/api/settings', {
+  localPort: Number($('sLocalPort').value), testModel: $('sTestModel').value, codexModel: $('sCodexModel').value,
+  claudeModel: $('sClaudeModel').value, magpieExe: $('sMagpieExe').value,
+  autoSyncMagpie: $('sAutoSync').checked, claudeBypass: $('sBypass').checked,
+}), () => t('settingsSaved'));
+$('keyCancel').onclick = () => $('keyDialog').close();
+$('keyDialog').addEventListener('close', () => { $('keyPassword').value = ''; });
+$('keySubmit').onclick = () => {
+  const password = $('keyPassword').value, alias = keyAlias;
+  if (!password) { $('keyPassword').focus(); return; }
+  $('keyDialog').close();
+  act(alias + ':key', () => api('POST', `/api/hosts/${enc(alias)}/key`, { password }), t('keyDone', { alias }));
+};
+$('downloadLogs').onclick = () => {
+  const text = latestLogs.map(l => `${new Date(l.t).toISOString()} [${l.alias || 'panel'}] ${R(l.msg)}`).join('\n');
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+  const link = el('a', { href: url, download: 'magpie-panel-logs.txt' });
+  link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+$('shutdown').onclick = async () => {
+  if (!confirm(t('shutdownConfirm'))) return;
+  try {
+    await api('POST', '/api/shutdown');
+    exited = true;
+    $('hosts').replaceChildren(el('div', { class: 'card muted' }, t('exitedMsg')));
+    $('magpieInfo').textContent = t('exitedInfo');
+    document.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  } catch (e) { toast(e.message, 'err'); }
+};
+
+applyStatic();
+refresh();
+setInterval(() => { if (!document.hidden) refresh(); }, 4000);
+</script>
+</body>
+</html>

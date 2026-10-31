@@ -33,15 +33,21 @@ This lets a CLI running on the remote server use the magpie instance running on 
 
 ## Download and start
 
-Download the repository as a ZIP from GitHub, extract it, and double-click `start.bat`. Or clone it with Git:
+Download the repository as a ZIP from GitHub, extract it, and double-click `start-hidden.vbs` for a completely windowless start, or `start.bat` if you want a console that shows the log. Or clone it with Git:
 
 ```powershell
 git clone https://github.com/Gokie369/magpie-ssh.git
 cd magpie-ssh
-start.bat
+wscript start-hidden.vbs
 ```
 
 The panel listens only on `http://127.0.0.1:3480` and normally opens that address automatically. There are no npm packages to install.
+
+### Start without a console window
+
+`start-hidden.vbs` launches the same backend with no visible cmd/PowerShell window. Its output is written to `panel.log` in the project folder (UTF-8, kept under 1 MB by dropping the oldest lines), so startup errors are still diagnosable. Use **Quit panel** in the web UI or double-click `stop-hidden.vbs` to stop it; Ctrl+C is not available in hidden mode.
+
+`start.bat` / `stop.bat` remain available for troubleshooting and show a console window. A desktop shortcut should point to `wscript.exe "<folder>\start-hidden.vbs"` (or directly to `start-hidden.vbs`) to stay hidden.
 
 The first launch creates `hosts.json` next to the panel. It contains your servers and local settings and is intentionally ignored by Git. Do not copy it into a public issue or commit it to a repository.
 
@@ -109,8 +115,8 @@ The web UI includes a Chinese/English switch in the top-right controls. The choi
 - **Start all / Stop all** affects only tunnels managed by this panel.
 - **Quit panel** closes the panel and its tunnels but does not stop magpie.
 - Closing the browser tab does not stop the backend or tunnels.
-- Run `stop.bat`, use **Quit panel**, or press Ctrl+C for a normal shutdown.
-- Re-running `start.bat` while the panel is already running opens the existing panel instead of creating a second one.
+- Run `stop-hidden.vbs` (no window) or `stop.bat`, use **Quit panel**, or press Ctrl+C for a normal shutdown.
+- Re-running `start-hidden.vbs` or `start.bat` while the panel is already running opens the existing panel instead of creating a second one.
 - The panel can identify SSH tunnel processes outside its own process tree. It only ends one after explicit confirmation.
 
 ## Security notes
@@ -156,7 +162,8 @@ Check that Node.js is version 18 or newer, that port `3480` is available, and th
 - `index.html` — browser UI.
 - `i18n.js` — shared Chinese/English message tables.
 - `native-cli.py` — remote native CLI configuration and byte-preserving backup/restore helper.
-- `start.bat` / `stop.bat` — Windows launch and shutdown scripts.
+- `start.bat` / `stop.bat` — Windows launch and shutdown scripts with a console.
+- `start-hidden.vbs` / `stop-hidden.vbs` — windowless launch and shutdown; output goes to `panel.log`.
 - `server.test.js` and `native-cli.test.py` — isolated regression tests.
 
 Run the tests from the project directory:

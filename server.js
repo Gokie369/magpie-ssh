@@ -21,6 +21,45 @@ const PANEL_PORT = Number(process.env.MAGPIE_PANEL_PORT || 3480);
 const TOKEN = crypto.randomBytes(18).toString('hex');
 const CONSOLE_LANG = /^zh/i.test(process.env.MAGPIE_PANEL_LANG || Intl.DateTimeFormat().resolvedOptions().locale || '') ? 'zh' : 'en';
 
+// Hidden-launcher mode: append console output to a UTF-8 log file capped at 1 MB.
+// Old lines are dropped from the front, so the newest diagnostics always survive.
+const MAX_LOG_BYTES = 1024 * 1024;
+function appendCapped(file, text, max = MAX_LOG_BYTES) {
+  const buf = Buffer.from(text, 'utf8');
+  if (buf.length >= max) {
+    let tail = buf.subarray(buf.length - max);
+    while (tail.length && (tail[0] & 0xC0) === 0x80) tail = tail.subarray(1);
+    fs.writeFileSync(file, tail);
+    return;
+  }
+  let size = 0;
+  try { size = fs.statSync(file).size; } catch { /* file does not exist yet */ }
+  if (size + buf.length > max) {
+    let old = Buffer.alloc(0);
+    try { old = fs.readFileSync(file); } catch { /* keep an empty tail */ }
+    let tail = old.subarray(Math.max(0, old.length - (max - buf.length)));
+    while (tail.length && (tail[0] & 0xC0) === 0x80) tail = tail.subarray(1);
+    fs.writeFileSync(file, tail);
+  }
+  fs.appendFileSync(file, buf);
+}
+const LOG_FILE = (() => {
+  const i = process.argv.indexOf('--log');
+  return i > 0 && process.argv[i + 1] ? path.resolve(APP_DIR, process.argv[i + 1]) : '';
+})();
+if (LOG_FILE) {
+  const write = (level, args) => {
+    try {
+      const text = args.map(a => (a instanceof Error ? (a.stack || a.message) : typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+      appendCapped(LOG_FILE, `${new Date().toISOString()} ${level} ${text}\n`);
+    } catch { /* a log failure must never stop the panel */ }
+  };
+  const out = console.log.bind(console), err = console.error.bind(console);
+  console.log = (...a) => { write('INFO', a); out(...a); };
+  console.error = (...a) => { write('ERROR', a); err(...a); };
+  process.on('uncaughtException', e => { write('FATAL', [e]); process.exit(1); });
+}
+
 const ALIAS_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const HOSTNAME_RE = /^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}$/;
 const USER_RE = /^[A-Za-z0-9._-]{1,64}$/;
@@ -996,4 +1035,4 @@ if (require.main === module) {
   else if (process.argv.includes('--status')) panelCommand('status');
   else startPanel();
 }
-module.exports = { parseSshConfig, validPort, forwardSpec, updateSettings, updateHost, getHost, startTunnel, stopTunnel, restartTunnel, hostView, tstate, data: () => data, server, startPanel, ALIAS_RE, HOSTNAME_RE, ensureAskpass, nativeCall, nativeStatus, nativeApply, nativeRestore, pickModel, I18N };
+module.exports = { parseSshConfig, validPort, forwardSpec, updateSettings, updateHost, getHost, startTunnel, stopTunnel, restartTunnel, hostView, tstate, data: () => data, server, startPanel, ALIAS_RE, HOSTNAME_RE, ensureAskpass, nativeCall, nativeStatus, nativeApply, nativeRestore, pickModel, appendCapped, I18N };

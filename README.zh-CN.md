@@ -33,15 +33,21 @@
 
 ## 下载和启动
 
-在 GitHub 页面通过 **Code → Download ZIP** 下载并解压，然后双击 `start.bat`。也可以使用 Git：
+在 GitHub 页面通过 **Code → Download ZIP** 下载并解压，然后双击 `start-hidden.vbs`，完全不会出现窗口；如果想看到控制台日志，则双击 `start.bat`。也可以使用 Git：
 
 ```powershell
 git clone https://github.com/Gokie369/magpie-ssh.git
 cd magpie-ssh
-start.bat
+wscript start-hidden.vbs
 ```
 
 面板默认只监听 `http://127.0.0.1:3480`，通常会自动打开浏览器。项目没有需要执行 `npm install` 的依赖。
+
+### 无窗口启动
+
+`start-hidden.vbs` 用完全相同的方式启动后台，但不会出现 cmd/PowerShell 窗口。输出写入项目目录的 `panel.log`（UTF-8，超过 1 MB 时自动丢弃最旧的行，文件始终不超过 1 MB），因此启动错误仍然可以排查。停止时用网页里的“退出面板”，或双击 `stop-hidden.vbs`；无窗口模式下没有 Ctrl+C 可用。
+
+`start.bat` / `stop.bat` 仍保留，用于需要查看控制台时排障。桌面快捷方式应指向 `wscript.exe "<目录>\start-hidden.vbs"`（或直接指向 `start-hidden.vbs`），才能保持无窗口。
 
 第一次启动会在面板目录创建 `hosts.json`。它保存你的服务器和本机设置，已经被 Git 忽略。不要把它提交到公开仓库，也不要在 issue 中粘贴它的内容。
 
@@ -109,8 +115,8 @@ Codex 模型目录由实时模型 ID 和本机 OpenCode 元数据生成。模型
 - “全部开启 / 全部关闭”只影响本面板管理的隧道。
 - “退出面板”会关闭面板及其隧道，但不会关闭 magpie。
 - 关闭浏览器标签页不会停止后台或隧道。
-- 可用“退出面板”、`stop.bat` 或 Ctrl+C 正常关闭。
-- 面板已运行时再次双击 `start.bat`，会打开现有面板，不会启动第二个面板。
+- 可用“退出面板”、`stop-hidden.vbs`（无窗口）或 `stop.bat` 正常关闭；控制台模式下也可以 Ctrl+C。
+- 面板已运行时再次双击 `start-hidden.vbs` 或 `start.bat`，会打开现有面板，不会启动第二个面板。
 - 面板可以发现不属于自己的 SSH 隧道进程；只有确认后才会结束指定的一条进程。
 
 ## 安全说明
@@ -160,7 +166,8 @@ codex app-server daemon restart
 - `index.html`：网页界面。
 - `i18n.js`：中英文消息表。
 - `native-cli.py`：远程原生 CLI 配置及按字节备份/恢复助手。
-- `start.bat` / `stop.bat`：Windows 启动和关闭脚本。
+- `start.bat` / `stop.bat`：带控制台的 Windows 启动和关闭脚本。
+- `start-hidden.vbs` / `stop-hidden.vbs`：无窗口启动和关闭；输出写入 `panel.log`。
 - `server.test.js`、`native-cli.test.py`：隔离回归测试。
 
 在项目目录运行测试：

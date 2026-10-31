@@ -63,6 +63,20 @@ test('empty model settings pick a fitting live model', () => {
   assert.throws(() => app.pickModel('codex', []));
 });
 
+test('hidden log stays under its cap and keeps the newest entries', () => {
+  const file = path.join(dir, 'capped.log');
+  const max = 4096;
+  for (let i = 0; i < 100; i++) app.appendCapped(file, `line ${String(i).padStart(3, '0')} ${'x'.repeat(80)}\n`, max);
+  assert.ok(fs.statSync(file).size <= max);
+  const text = fs.readFileSync(file, 'utf8');
+  assert.match(text, /line 099/);
+  assert.doesNotMatch(text, /line 000/);
+  assert.ok(text.endsWith('\n'));
+  const utf8 = path.join(dir, 'capped-utf8.log');
+  app.appendCapped(utf8, '中'.repeat(10), 7);
+  assert.ok(fs.statSync(utf8).size <= 7);
+});
+
 test('ports reject fractions, invalid ranges and command strings', () => {
   for (const p of [0, 22, 1023, 65536, 3425.2, '3425;echo']) assert.equal(app.validPort(p), null);
   assert.equal(app.validPort('3425'), 3425);

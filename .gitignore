@@ -11,5 +11,9 @@ __pycache__/
 *.bak
 legacy/
 
+# Windowless launcher log
+panel.log
+panel-stop.log
+
 # Optional local tooling
 node_modules/

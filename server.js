@@ -802,6 +802,14 @@ async function nativeRestore(alias, tool, force) {
   if (!h.native.codex?.active && !h.native.claude?.active) h.nativeStale = false;
   saveData();
   log(alias, 'logNativeRestored', { tool: tool === 'codex' ? 'Codex' : 'Claude Code' });
+  if (tool === 'codex') {
+    // The daemon keeps serving the old catalog until it restarts, even though
+    // the config no longer references it.
+    try { await restartCodexDaemon(alias); }
+    catch (e) {
+      if (!(e && e.msg && e.msg.key === 'daemonUnsupported')) log(alias, 'logDaemonRestartFailed', { error: errMsg(e) });
+    }
+  }
   return result;
 }
 // Newer Codex versions keep a background app server that caches the model catalog.

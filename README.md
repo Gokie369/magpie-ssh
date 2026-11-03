@@ -89,9 +89,9 @@ No `codex-magpie` or `claude-magpie` wrapper is installed.
 
 - It updates `~/.claude/settings.json` with the remote magpie URL, model, and authentication token.
 - The **bypassPermissions** option is off by default in a fresh installation. Enable it in Settings only for servers and projects you trust; it skips Claude Code permission prompts and is a significant security tradeoff.
-- The panel records per-model compaction windows when the local OpenCode metadata provides them.
+- The panel records per-model compaction windows when the local OpenCode metadata provides them. It sets a 320k auto-compaction threshold for 400k models and caps the output budget at 32768 tokens, leaving room for generation and context growth before the upstream limit.
 
-Both integrations save the original bytes before changing a file. Use **Restore Codex** or **Restore Claude** to restore the original configuration. The panel keeps one rolling `*.magpie-panel.bak` for the current file and does not create an ever-growing series of timestamped backups. If a file was edited after connection, the UI warns before reconnecting or restoring.
+Both integrations save the original bytes before changing a file. Use **Restore Codex** or **Restore Claude** to restore the original configuration. Restoring Codex also restarts its background app-server, because that process keeps serving the cached magpie catalog even after the config no longer references it. This interrupts running Codex tasks; close and reopen any Codex TUI, and reload the Codex window in VS Code, to pick up the restored list. The panel keeps one rolling `*.magpie-panel.bak` for the current file and does not create an ever-growing series of timestamped backups. If a file was edited after connection, the UI warns before reconnecting or restoring.
 
 ## OpenCode and automatic synchronization
 

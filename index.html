@@ -286,16 +286,12 @@ function hostCard(h) {
         } }, t('reapply', { label })));
       }
       buttons.push(el('button', { disabled: working, onclick: () => {
-        const msg = n.changed ? t('forceRestoreConfirm', { label }) : t('restoreConfirm', { alias: h.alias, label });
+        const msg = tool === 'codex'
+          ? t(n.changed ? 'forceRestoreConfirmCodex' : 'restoreConfirmCodex', { alias: h.alias, label })
+          : t(n.changed ? 'forceRestoreConfirm' : 'restoreConfirm', { alias: h.alias, label });
         if (!confirm(msg)) return;
         act(h.alias + ':native', () => api('POST', `/api/hosts/${enc(h.alias)}/native/restore`, { tool, force: true }), t('restoreDone', { alias: h.alias, label }));
       } }, t(n.changed ? 'forceRestore' : 'restore', { label })));
-      if (tool === 'codex') {
-        buttons.push(el('button', { disabled: working, onclick: () => {
-          if (!confirm(t('daemonConfirm', { alias: h.alias }))) return;
-          act(h.alias + ':codex-daemon', () => api('POST', `/api/hosts/${enc(h.alias)}/codex-daemon`), t('daemonDone', { alias: h.alias }));
-        } }, t('daemonRestart')));
-      }
       return buttons;
     }
     return [el('button', { disabled: working, onclick: () => {
@@ -306,6 +302,14 @@ function hostCard(h) {
       act(h.alias + ':native', () => api('POST', `/api/hosts/${enc(h.alias)}/native/apply`, { tool, force: true }), t('applyDone', { alias: h.alias, label, tool }));
     } }, t('apply', { label }))];
   });
+  // Keep this available after "Restore Codex": the daemon caches the old catalog
+  // even once the config no longer references magpie.
+  const codexDaemonButton = (c && c.ok && c.tools && c.tools.codex) || (native.codex && native.codex.active)
+    ? el('button', { disabled: working, onclick: () => {
+      if (!confirm(t('daemonConfirm', { alias: h.alias }))) return;
+      act(h.alias + ':codex-daemon', () => api('POST', `/api/hosts/${enc(h.alias)}/codex-daemon`), t('daemonDone', { alias: h.alias }));
+    } }, t('daemonRestart'))
+    : null;
 
   return el('div', { class: 'card host', 'data-alias': h.alias },
     el('div', { class: 'top' },
@@ -341,6 +345,7 @@ function hostCard(h) {
       el('button', { disabled: working, onclick: () => act(h.alias + ':test', () => api('POST', `/api/hosts/${enc(h.alias)}/test`, {}), r => t('testToast', { alias: h.alias, ms: r.elapsedMs, reply: r.reply.slice(0, 120) })) }, b('test') ? t('testing') : t('test')),
       el('button', { disabled: working, onclick: () => act(h.alias + ':sync', () => api('POST', `/api/hosts/${enc(h.alias)}/sync`), t('syncOpencodeDone', { alias: h.alias })) }, b('sync') ? t('syncing') : t('syncOpencode')),
       ...nativeButtons,
+      codexDaemonButton,
       on ? el('button', { disabled: b('restart'), onclick: () => act(h.alias + ':restart', () => api('POST', `/api/hosts/${enc(h.alias)}/restart`)) }, t('reconnect')) : null,
       el('button', { disabled: working, onclick: () => {
         keyAlias = h.alias;

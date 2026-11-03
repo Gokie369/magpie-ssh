@@ -30,6 +30,7 @@ cp.spawn = (cmd, args) => {
   p.kill = () => { p.killed = true; process.nextTick(() => p.emit('close', 0)); return true; };
   children.push(p);
   if (args.at(-1) === 'echo MAGPIE_LOGIN_OK') process.nextTick(() => { p.stdout.end('MAGPIE_LOGIN_OK\n'); p.emit('close', 0); });
+  if (args.at(-1) === 'sh -s') process.nextTick(() => { p.stdout.end('MAGPIE_CLEANUP_UNSAFE\n'); p.emit('close', 0); });
   return p;
 };
 const app = require(path.join(dir, 'server.js'));
@@ -111,6 +112,18 @@ test('reverse forwarding explicitly binds remote loopback', () => {
   assert.equal(app.forwardSpec(app.getHost('test-host')), '127.0.0.1:3425:127.0.0.1:3425');
 });
 
+test('automatic port cleanup only targets an old same-user SSH session', () => {
+  const script = app.portCleanupScript(3425);
+  assert.match(script, /ss -ltnpe/);
+  assert.match(script, /current_session/);
+  assert.match(script, /user-\$uid\.slice\/session-\$session\.scope/);
+  assert.match(script, /p_comm.*sshd/);
+  assert.match(script, /kill -TERM/);
+  assert.doesNotMatch(script, /kill -9/);
+  assert.match(script, /MAGPIE_CLEANED/);
+  assert.match(script, /MAGPIE_CLEANUP_UNSAFE/);
+});
+
 test('running state requires SSH forwarding confirmation and stop cancels retry', async () => {
   app.startTunnel('test-host');
   assert.equal(app.tstate('test-host').status, 'starting');
@@ -160,7 +173,7 @@ test('SSH failure schedules retry, and explicit stop cancels it', async () => {
   children.at(-1).emit('close', 255);
   assert.equal(app.tstate('test-host').status, 'retrying');
   assert.equal(app.tstate('test-host').lastError.key, 'sshPortInUse');
-  assert.match(app.I18N.render('en', app.tstate('test-host').lastError), /Remote port is in use/);
+  assert.match(app.I18N.render('en', app.tstate('test-host').lastError), /remote port is in use/i);
   assert.match(app.I18N.render('zh', app.tstate('test-host').lastError), /端口被占用/);
   app.stopTunnel('test-host'); await tick();
   assert.equal(app.tstate('test-host').wanted, false);

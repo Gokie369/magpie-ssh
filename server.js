@@ -282,6 +282,51 @@ function tstate(alias) {
 }
 function forwardSpec(h) { return `127.0.0.1:${h.remotePort}:127.0.0.1:${data.settings.localPort}`; }
 
+// Only clean up a port when the listener belongs to an old SSH session owned by
+// the same remote user. Never touch service listeners or another user's SSH.
+function portCleanupScript(port) {
+  return [
+    'set -u',
+    `port=${port}`,
+    'uid=$(id -u)',
+    "current_session=$(sed -n 's#.*session-\\([0-9][0-9]*\\)\\.scope.*#\\1#p' /proc/self/cgroup | head -n 1)",
+    'line=$(ss -ltnpe "sport = :$port" 2>/dev/null | awk \'$1 == "LISTEN" { print; exit }\')',
+    "session=$(printf '%s\\n' \"$line\" | sed -n 's#.*session-\\([0-9][0-9]*\\)\\.scope.*#\\1#p')",
+    'case "$session" in',
+    '  ""|"$current_session") echo MAGPIE_CLEANUP_UNSAFE; exit 0 ;;',
+    'esac',
+    'case "$line" in',
+    '  *"/user-$uid.slice/session-$session.scope"*) ;;',
+    '  *) echo MAGPIE_CLEANUP_UNSAFE; exit 0 ;;',
+    'esac',
+    'cgroup="/sys/fs/cgroup/user.slice/user-$uid.slice/session-$session.scope/cgroup.procs"',
+    '[ -r "$cgroup" ] || { echo MAGPIE_CLEANUP_UNSAFE; exit 0; }',
+    'killed=0',
+    'while read -r pid; do',
+    '  [ -r "/proc/$pid/status" ] || continue',
+    '  p_uid=$(awk \'/^Uid:/{print $2; exit}\' "/proc/$pid/status" 2>/dev/null || true)',
+    '  p_comm=$(awk \'/^Name:/{print $2; exit}\' "/proc/$pid/status" 2>/dev/null || true)',
+    '  if [ "$p_uid" = "$uid" ] && [ "$p_comm" = "sshd" ]; then',
+    '    kill -TERM "$pid" 2>/dev/null && killed=1',
+    '  fi',
+    'done < "$cgroup"',
+    'if [ "$killed" = 1 ]; then',
+    '  for i in 1 2 3 4 5; do',
+    '    if ! ss -ltnH "sport = :$port" 2>/dev/null | grep -q LISTEN; then',
+    '      echo MAGPIE_CLEANED',
+    '      exit 0',
+    '    fi',
+    '    sleep 0.2',
+    '  done',
+    'fi',
+    'echo MAGPIE_CLEANUP_UNSAFE',
+  ].join('\n') + '\n';
+}
+async function cleanupRemotePort(alias, port) {
+  const r = await remoteScript(alias, portCleanupScript(port), 20000);
+  return r.out.includes('MAGPIE_CLEANED');
+}
+
 function startTunnel(alias) {
   const h = getHost(alias);
   const st = tstate(alias);
@@ -314,7 +359,7 @@ function startTunnel(alias) {
     if (st.proc === proc && st.status === 'starting') { stderr += '\nMAGPIE_SETUP_TIMEOUT'; proc.kill(); }
   }, 25000);
   proc.on('error', e => { if (e.code === 'ENOENT') notFound = true; stderr += e.message; });
-  proc.on('close', code => {
+  proc.on('close', async code => {
     clearTimeout(upTimer);
     if (st.proc !== proc || tunnels.get(alias) !== st) return;
     st.proc = null;
@@ -329,6 +374,24 @@ function startTunnel(alias) {
     st.lastError = notFound ? M('sshNotFound')
       : /MAGPIE_SETUP_TIMEOUT/.test(stderr) ? M('sshSetupTimeout')
       : explainSshError(tail(errors.join('\n'), 400)) || M('sshExit', { code });
+    const portInUse = st.lastError && st.lastError.key === 'sshPortInUse';
+    if (portInUse && (!st.lastPortCleanupAt || Date.now() - st.lastPortCleanupAt >= 60000)) {
+      st.lastPortCleanupAt = Date.now();
+      st.status = 'retrying';
+      log(alias, 'logPortCleanup');
+      try {
+        const cleaned = await cleanupRemotePort(alias, h.remotePort);
+        if (!st.wanted || tunnels.get(alias) !== st) return;
+        if (cleaned) {
+          st.restarts = 0;
+          log(alias, 'logPortCleanupDone');
+          st.timer = setTimeout(() => { if (st.wanted) startTunnel(alias); }, 300);
+          return;
+        }
+      } catch { /* fall through to normal backoff, leaving the port untouched */ }
+      if (!st.wanted || tunnels.get(alias) !== st) return;
+      log(alias, 'logPortCleanupSkipped');
+    }
     st.restarts++;
     const delay = Math.min(60, 3 * 2 ** Math.min(st.restarts - 1, 4));
     st.status = 'retrying';
@@ -1035,4 +1098,4 @@ if (require.main === module) {
   else if (process.argv.includes('--status')) panelCommand('status');
   else startPanel();
 }
-module.exports = { parseSshConfig, validPort, forwardSpec, updateSettings, updateHost, getHost, startTunnel, stopTunnel, restartTunnel, hostView, tstate, data: () => data, server, startPanel, ALIAS_RE, HOSTNAME_RE, ensureAskpass, nativeCall, nativeStatus, nativeApply, nativeRestore, pickModel, appendCapped, I18N };
+module.exports = { parseSshConfig, validPort, forwardSpec, portCleanupScript, cleanupRemotePort, updateSettings, updateHost, getHost, startTunnel, stopTunnel, restartTunnel, hostView, tstate, data: () => data, server, startPanel, ALIAS_RE, HOSTNAME_RE, ensureAskpass, nativeCall, nativeStatus, nativeApply, nativeRestore, pickModel, appendCapped, I18N };

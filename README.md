@@ -132,7 +132,7 @@ The web UI includes a Chinese/English switch in the top-right controls. The choi
 
 ### Remote port is in use
 
-An old SSH process or another service may still own the remote port. Stop the old tunnel, wait for the server to release it, or choose another remote port. The panel retries with backoff and does not kill a remote `sshd` process.
+When this happens, the panel first checks whether the listener belongs to an old SSH session owned by the same remote user. If it can verify that safely, it sends a normal `TERM` signal to that old SSH session and reconnects immediately. It never kills a normal service, another user's SSH session, or uses `kill -9`. If ownership cannot be verified, the panel leaves the listener alone, retries with backoff, and you can stop the old tunnel manually or choose another remote port.
 
 ### SSH is established but the check fails
 
